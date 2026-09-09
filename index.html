@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CanSat — Telemetría en Vuelo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #060810;
+      --surface: #0d1117;
+      --border: rgba(255,255,255,0.07);
+      --text: #e6edf3;
+      --muted: #7d8590;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --orange: #d29922;
+      --red: #f85149;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 40px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: rgba(6,8,16,0.95);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .logo {
+      font-family: 'Space Mono', monospace;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--text);
+    }
+
+    .logo span { color: var(--accent); }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--green);
+    }
+
+    .dot {
+      width: 7px; height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .timestamp {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    main {
+      padding: 32px 40px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .mission-id {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      margin-bottom: 6px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 600;
+      margin-bottom: 32px;
+      color: var(--text);
+    }
+
+    .primary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .metric {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .metric-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 10px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    .metric-value {
+      font-family: 'Space Mono', monospace;
+      font-size: 1.9rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .metric-value.accent { color: var(--accent); }
+    .metric-value.green { color: var(--green); }
+    .metric-value.orange { color: var(--orange); }
+
+    .metric-unit {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 6px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .panel-title {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    #map {
+      height: 280px;
+      border-radius: 6px;
+      filter: saturate(0.4) brightness(0.7);
+    }
+
+    canvas { width: 100% !important; }
+
+    .accel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .axis {
+      background: rgba(255,255,255,0.03);
+      border-radius: 6px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .axis-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .axis-val {
+      font-family: 'Space Mono', monospace;
+      font-size: 1.3rem;
+      font-weight: 700;
+    }
+
+    .axis-val.x { color: var(--red); }
+    .axis-val.y { color: var(--green); }
+    .axis-val.z { color: var(--accent); }
+
+    .gps-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-family: 'Space Mono', monospace;
+      font-size: 0.8rem;
+    }
+
+    .gps-row:last-child { border-bottom: none; }
+    .gps-key { color: var(--muted); }
+    .gps-val { color: var(--text); }
+
+    @media (max-width: 1100px) {
+      .primary-grid { grid-template-columns: repeat(3, 1fr); }
+      .bottom-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 700px) {
+      main { padding: 20px; }
+      header { padding: 16px 20px; }
+      .primary-grid { grid-template-columns: repeat(2, 1fr); }
+      .bottom-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">CAN<span>SAT</span> · TELEMETRY</div>
+  <div class="status"><div class="dot"></div> LIVE</div>
+  <div class="timestamp" id="clock">--:--:--</div>
+</header>
+
+<main>
+  <div class="mission-id">MISIÓN / VUELO-01 / ESTACIÓN TERRENA</div>
+  <h1>Panel de Telemetría</h1>
+
+  <div class="primary-grid">
+    <div class="metric">
+      <div class="metric-label">TEMPERATURA</div>
+      <div class="metric-value accent" id="temp">--</div>
+      <div class="metric-unit">°C</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">ALTITUD</div>
+      <div class="metric-value green" id="alt">--</div>
+      <div class="metric-unit">metros</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">PRESIÓN</div>
+      <div class="metric-value" id="press">--</div>
+      <div class="metric-unit">hPa</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">RUMBO</div>
+      <div class="metric-value orange" id="heading">--</div>
+      <div class="metric-unit">grados</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">SATÉLITES GPS</div>
+      <div class="metric-value" id="sats">--</div>
+      <div class="metric-unit">en vista</div>
+    </div>
+  </div>
+
+  <div class="bottom-grid">
+    <div class="panel">
+      <div class="panel-title">ACELERÓMETRO — m/s²</div>
+      <div class="accel-grid">
+        <div class="axis">
+          <div class="axis-label">EJE X</div>
+          <div class="axis-val x" id="ax">0.0</div>
+        </div>
+        <div class="axis">
+          <div class="axis-label">EJE Y</div>
+          <div class="axis-val y" id="ay">0.0</div>
+        </div>
+        <div class="axis">
+          <div class="axis-label">EJE Z</div>
+          <div class="axis-val z" id="az">0.0</div>
+        </div>
+      </div>
+      <canvas id="accelChart" height="120"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">ALTITUD EN TIEMPO REAL — m</div>
+      <canvas id="altChart" height="200"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">UBICACIÓN GPS</div>
+      <div id="map"></div>
+      <div style="margin-top:14px;">
+        <div class="gps-row">
+          <span class="gps-key">LAT</span>
+          <span class="gps-val" id="lat">--</span>
+        </div>
+        <div class="gps-row">
+          <span class="gps-key">LNG</span>
+          <span class="gps-val" id="lng">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyA5kK4d3H5o_IXmGL_XkaqD9AskpetJWRg",
+    authDomain: "cansat-bdba7.firebaseapp.com",
+    databaseURL: "https://cansat-bdba7-default-rtdb.firebaseio.com",
+    projectId: "cansat-bdba7",
+    storageBucket: "cansat-bdba7.firebasestorage.app",
+    messagingSenderId: "476265577879",
+    appId: "1:476265577879:web:d002a9cf0a6612632098d2"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // Reloj
+  setInterval(() => {
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString('es-MX');
+  }, 1000);
+
+  // Mapa
+  const map = L.map('map').setView([16.75, -93.11], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+  const marker = L.circleMarker([16.75, -93.11], {
+    radius: 8, color: '#58a6ff', fillColor: '#58a6ff', fillOpacity: 1
+  }).addTo(map);
+
+  // Gráfica acelerómetro
+  const accelCtx = document.getElementById('accelChart').getContext('2d');
+  const accelChart = new Chart(accelCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'X', data: [], borderColor: '#f85149', borderWidth: 1.5, pointRadius: 0, tension: 0.4 },
+        { label: 'Y', data: [], borderColor: '#3fb950', borderWidth: 1.5, pointRadius: 0, tension: 0.4 },
+        { label: 'Z', data: [], borderColor: '#58a6ff', borderWidth: 1.5, pointRadius: 0, tension: 0.4 }
+      ]
+    },
+    options: {
+      animation: false,
+      scales: {
+        x: { display: false },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#7d8590', font: { family: 'Space Mono', size: 10 } } }
+      },
+      plugins: { legend: { labels: { color: '#7d8590', font: { family: 'Space Mono', size: 10 } } } }
+    }
+  });
+
+  // Gráfica altitud
+  const altCtx = document.getElementById('altChart').getContext('2d');
+  const altChart = new Chart(altCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{ label: 'Alt (m)', data: [], borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.08)', borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: true }]
+    },
+    options: {
+      animation: false,
+      scales: {
+        x: { display: false },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#7d8590', font: { family: 'Space Mono', size: 10 } } }
+      },
+      plugins: { legend: { labels: { color: '#7d8590', font: { family: 'Space Mono', size: 10 } } } }
+    }
+  });
+
+  const MAX = 40;
+
+  function push(chart, label, ...values) {
+    chart.data.labels.push(label);
+    if (chart.data.labels.length > MAX) chart.data.labels.shift();
+    chart.data.datasets.forEach((ds, i) => {
+      ds.data.push(values[i]);
+      if (ds.data.length > MAX) ds.data.shift();
+    });
+    chart.update();
+  }
+
+  // Escuchar Firebase
+  onValue(ref(db, 'cansat/telemetria'), (snap) => {
+    const d = snap.val();
+    if (!d) return;
+
+    const t = new Date().toLocaleTimeString('es-MX');
+
+    document.getElementById('temp').textContent = d.temp?.toFixed(1) ?? '--';
+    document.getElementById('alt').textContent = d.alt?.toFixed(1) ?? '--';
+    document.getElementById('press').textContent = (d.press / 100).toFixed(1);
+    document.getElementById('heading').textContent = d.heading?.toFixed(0) ?? '--';
+    document.getElementById('sats').textContent = d.sats ?? '--';
+    document.getElementById('ax').textContent = d.ax?.toFixed(2) ?? '0.0';
+    document.getElementById('ay').textContent = d.ay?.toFixed(2) ?? '0.0';
+    document.getElementById('az').textContent = d.az?.toFixed(2) ?? '0.0';
+
+    if (d.lat && d.lng && d.lat !== 0 && d.lng !== 0) {
+      document.getElementById('lat').textContent = d.lat.toFixed(6);
+      document.getElementById('lng').textContent = d.lng.toFixed(6);
+      marker.setLatLng([d.lat, d.lng]);
+      map.setView([d.lat, d.lng]);
+    }
+
+    push(accelChart, t, d.ax, d.ay, d.az);
+    push(altChart, t, d.alt);
+  });
+</script>
+
+</body>
+</html>
